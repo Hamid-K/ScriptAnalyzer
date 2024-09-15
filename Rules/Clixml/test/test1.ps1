@@ -1,0 +1,1 @@
+$data = Import-Clixml "C:\path\to\file.xml"
