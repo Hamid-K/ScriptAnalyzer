@@ -19,22 +19,58 @@ function Invoke-AvoidInsecureDeserialization {
     # Log AST details to ensure AST is passed
     Write-Host "AST details: $ScriptBlockAst"
 
-    # Define deserialization cmdlets to detect
-    $deserializationCmdlets = @('Import-Clixml', 'ConvertFrom-CliXml')
+    # Define deserialization cmdlets and methods to detect
+    $deserializationCmdlets = @('Import-Clixml', 'Export-Clixml')
+    $deserializationMethods = @('[PSSerializer]::Serialize', '[PSSerializer]::Deserialize')
 
-    # Search for deserialization cmdlets in the AST
+    # Detect deserialization cmdlets
     $ScriptBlockAst.FindAll({
         param($ast)
         $ast -is [System.Management.Automation.Language.CommandAst] -and
-        $deserializationCmdlets -contains $ast.GetCommandName()
+        ($deserializationCmdlets -contains $ast.GetCommandName())
     }, $true) | ForEach-Object {
-        # Create a finding for each deserialization cmdlet found
         $finding = New-Object -TypeName Microsoft.Windows.PowerShell.ScriptAnalyzer.Generic.DiagnosticRecord `
             -ArgumentList @(
                 'Avoid using deserialization cmdlets with untrusted input.',
-                $_.Extent,   # Provide the AST extent for highlighting the issue
+                $_.Extent,
                 'AvoidInsecureDeserialization',
-                'Error',  # Use "Error" or "Warning" instead of "Critical"
+                'Error',
+                $Path,
+                $null
+            )
+        $findings += $finding
+    }
+
+    # Detect deserialization methods as strings (using CommandAst instead of MethodCallAst)
+    $ScriptBlockAst.FindAll({
+        param($ast)
+        $ast -is [System.Management.Automation.Language.CommandAst] -and
+        ($deserializationMethods | ForEach-Object { $ast.Extent.Text -like "*$_*" })
+    }, $true) | ForEach-Object {
+        $finding = New-Object -TypeName Microsoft.Windows.PowerShell.ScriptAnalyzer.Generic.DiagnosticRecord `
+            -ArgumentList @(
+                'Avoid using PSSerializer deserialization methods with untrusted input.',
+                $_.Extent,
+                'AvoidInsecureDeserialization',
+                'Error',
+                $Path,
+                $null
+            )
+        $findings += $finding
+    }
+
+    # Detect usage of rehydrated types like ScriptBlock (<SBK>) and CimInstance objects
+    $ScriptBlockAst.FindAll({
+        param($ast)
+        $ast -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
+        ($ast.Value -match '<SBK>|Win32_PingStatus|Microsoft.Management.Infrastructure.CimInstance')
+    }, $true) | ForEach-Object {
+        $finding = New-Object -TypeName Microsoft.Windows.PowerShell.ScriptAnalyzer.Generic.DiagnosticRecord `
+            -ArgumentList @(
+                'Potential rehydrated ScriptBlock or CimInstance found, review for unsafe deserialization.',
+                $_.Extent,
+                'AvoidInsecureDeserialization',
+                'Warning',
                 $Path,
                 $null
             )
