@@ -20,7 +20,7 @@ function Invoke-AvoidInsecureDeserialization {
     Write-Host "AST details: $ScriptBlockAst"
 
     # Detect deserialization cmdlets
-    $deserializationCmdlets = @('Import-Clixml', 'Export-Clixml')
+    $deserializationCmdlets = @('Import-Clixml', 'Export-Clixml', 'ConvertFrom-CliXml')
     $ScriptBlockAst.FindAll({
         param($ast)
         $ast -is [System.Management.Automation.Language.CommandAst] -and
